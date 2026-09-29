@@ -6,7 +6,7 @@
 <title>Jelly Cam</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zalando+Sans+Expanded:wght@500&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: the full-bleed canvas is the whole piece. One capsule button sits under the jello; everything else pins to the bottom edge and stays out of the way. */
 :root {
@@ -16,7 +16,10 @@
   --line: rgba(245, 238, 241, .3);
   --veil: rgba(16, 13, 18, .84);
   --jelly: #ff5a7a;
-  --display: "Familjen Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
+  --button: #ffcad1;
+  --button-hover: #ffb6c1;
+  --button-ink: #313131;
+  --display: "Zalando Sans Expanded", "Helvetica Neue", Arial, system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
   color-scheme: dark;
@@ -39,7 +42,9 @@ body { font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; -webkit-
 .capsule:hover:not(:disabled) { background: var(--jelly); border-color: var(--jelly); color: var(--ink); }
 .capsule:disabled { opacity: .5; cursor: default; }
 .capsule:focus-visible, .round:focus-visible, .tune input:focus-visible { outline: 2px solid var(--jelly); outline-offset: 3px; }
-#start { position: fixed; left: 50%; top: 64%; transform: translateX(-50%); font: 500 17px/1 var(--display); letter-spacing: .01em; text-transform: none; padding: 14px 30px; }
+#start { position: fixed; left: 50%; top: 64%; transform: translateX(-50%); font: 500 21px/1 var(--display); letter-spacing: .01em; text-transform: none;
+  padding: 16px 34px; border: 0; background: var(--button); color: var(--button-ink); }
+#start:hover:not(:disabled) { background: var(--button-hover); color: var(--button-ink); }
 
 .round {
   position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
