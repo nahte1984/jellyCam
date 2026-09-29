@@ -423,7 +423,7 @@ void main() {
     let ih = 0;
     if (jello.complete && jello.naturalWidth) {
       const aspect = jello.naturalWidth / jello.naturalHeight;
-      const iw = Math.min(W * 0.74, H * 0.42 * aspect, 640);
+      const iw = Math.min(W * 0.74, H * 0.42 * aspect, 640) * 0.5;   // half the fitted size
       ih = iw / aspect;
       c.imageSmoothingEnabled = true;
       c.imageSmoothingQuality = 'high';
