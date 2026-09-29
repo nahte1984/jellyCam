@@ -6,9 +6,9 @@
 <title>Jelly Cam</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Layout: the full-bleed canvas is the whole piece. One capsule button sits under the title; everything else pins to the bottom edge and stays out of the way. */
+/* Layout: the full-bleed canvas is the whole piece. One capsule button sits under the jello; everything else pins to the bottom edge and stays out of the way. */
 :root {
   --ink: #100d12;
   --paper: #f5eef1;
@@ -16,7 +16,7 @@
   --line: rgba(245, 238, 241, .3);
   --veil: rgba(16, 13, 18, .84);
   --jelly: #ff5a7a;
-  --display: "Bagel Fat One", "Arial Rounded MT Bold", "Nunito", system-ui, sans-serif;
+  --display: "Familjen Grotesk", "Helvetica Neue", Arial, system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
   color-scheme: dark;
@@ -39,14 +39,15 @@ body { font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; -webkit-
 .capsule:hover:not(:disabled) { background: var(--jelly); border-color: var(--jelly); color: var(--ink); }
 .capsule:disabled { opacity: .5; cursor: default; }
 .capsule:focus-visible, .round:focus-visible, .tune input:focus-visible { outline: 2px solid var(--jelly); outline-offset: 3px; }
-#start { position: fixed; left: 50%; top: 64%; transform: translateX(-50%); }
+#start { position: fixed; left: 50%; top: 64%; transform: translateX(-50%); font: 500 17px/1 var(--display); letter-spacing: .01em; text-transform: none; padding: 14px 30px; }
 
 .round {
   position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   width: 52px; height: 52px; border-radius: 50%; border: 1.5px solid var(--line);
   background: var(--veil); color: var(--paper); display: grid; place-items: center; cursor: pointer; padding: 0;
 }
-.round svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.round svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round;
+  transform: rotate(var(--turn, 0deg)); transition: transform .55s cubic-bezier(.34, 1.45, .5, 1); }
 .round:hover:not(:disabled) { border-color: var(--paper); }
 
 .notice {
@@ -69,15 +70,15 @@ body { font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; -webkit-
 .tune label { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
 .tune output { color: var(--paper); font-variant-numeric: tabular-nums; }
 .tune input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--jelly); }
-@media (prefers-reduced-motion: reduce) { .capsule { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .capsule, .round svg { transition: none; } }
 </style>
 
 </head>
 <body>
-<h1 class="sr">jelly cam</h1>
+<h1 class="sr">jellyCam</h1>
 <canvas id="jelly" tabindex="0" aria-label="The camera image, set in jelly. Drag to stretch it, tap to poke it."></canvas>
 <video id="feed" class="offscreen" playsinline muted autoplay></video>
-<button id="start" class="capsule" type="button">start</button>
+<button id="start" class="capsule" type="button">jellyCam</button>
 <button id="flip" class="round" type="button" aria-label="Switch camera" hidden>
   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 10a7.5 7.5 0 0 1 13.4-3.6"/><path d="M18.5 3v3.8h-3.8"/><path d="M19.5 14a7.5 7.5 0 0 1-13.4 3.6"/><path d="M5.5 21v-3.8h3.8"/></svg>
 </button>
@@ -385,7 +386,10 @@ void main() {
   // ---------- picture source: title card, camera, or a dropped file ----------
   const titleCv = document.createElement('canvas');
   const titleCtx = titleCv.getContext('2d');
-  let titlePx = 64;
+  let titleCy = 0, titleBottom = 0;
+  const jello = new Image();
+  jello.decoding = 'async';
+  jello.src = 'jello.png';
   let source = { el: titleCv, video: false, mirror: false, kind: 'title', w: 0, h: 0, rvfc: false };
   let newFrame = false;
 
@@ -403,8 +407,10 @@ void main() {
     c.globalAlpha = 1;
     c.fillStyle = token('--ink', '#100d12');
     c.fillRect(0, 0, W, H);
-    // a field of seeds, so every wobble is visible
-    const gap = short / 11, r = Math.max(1.2, short / 250);
+    // a field of seeds, so every wobble is visible. Desktop: twice as many per row, half the size
+    const phone = short < 600;
+    const gap = phone ? short / 11 : short / 22;
+    const r = phone ? Math.max(1.2, short / 250) : Math.max(0.6, short / 500);
     const ox = (W % gap) / 2 + gap / 2, oy = (H % gap) / 2 + gap / 2;
     c.fillStyle = token('--paper', '#f5eef1');
     c.globalAlpha = 0.13;
@@ -412,20 +418,22 @@ void main() {
     for (let y = oy; y < H; y += gap) for (let x = ox; x < W; x += gap) { c.moveTo(x + r, y); c.arc(x, y, r, 0, Math.PI * 2); }
     c.fill();
     c.globalAlpha = 1;
-    let f = Math.min(W * 0.17, H * 0.2);
-    const face = '"Bagel Fat One", "Arial Rounded MT Bold", Nunito, system-ui, sans-serif';
-    c.font = `400 ${f}px ${face}`;
-    const tw = c.measureText('jelly cam').width;
-    if (tw > W * 0.86) { f *= (W * 0.86) / tw; c.font = `400 ${f}px ${face}`; }
-    titlePx = f;
-    c.textAlign = 'center';
-    c.textBaseline = 'middle';
-    c.fillStyle = token('--jelly', '#ff5a7a');
-    c.fillText('jelly cam', W / 2, H * 0.44);
+    // the jello, centred a little above the middle
+    titleCy = H * 0.42;
+    let ih = 0;
+    if (jello.complete && jello.naturalWidth) {
+      const aspect = jello.naturalWidth / jello.naturalHeight;
+      const iw = Math.min(W * 0.74, H * 0.42 * aspect, 640);
+      ih = iw / aspect;
+      c.imageSmoothingEnabled = true;
+      c.imageSmoothingQuality = 'high';
+      c.drawImage(jello, W / 2 - iw / 2, titleCy - ih / 2, iw, ih);
+    }
+    titleBottom = titleCy + (ih || H * 0.16) / 2;
   }
 
   function placeStart() {
-    const top = Math.min(H - 84, H * 0.44 + titlePx * 0.62 + 22);
+    const top = Math.min(H - 84, titleBottom + 30);
     startBtn.style.top = Math.round(top) + 'px';
   }
 
@@ -709,7 +717,10 @@ void main() {
   startBtn.addEventListener('click', () => { requestMotion(); startCamera(); });
   retryBtn.addEventListener('click', () => { requestMotion(); startCamera(); });
 
+  let flipTurn = 0;
   flipBtn.addEventListener('click', async () => {
+    flipTurn += 180;   // keeps turning clockwise, half a turn per tap
+    flipBtn.style.setProperty('--turn', flipTurn + 'deg');
     const prev = facing;
     facing = facing === 'user' ? 'environment' : 'user';
     flipBtn.disabled = true;
@@ -820,15 +831,13 @@ void main() {
   buildTune();
   if (location.hash === '#tune') tunePanel.hidden = false;
   resize();
-  if (!reduceMotion) poke(W / 2, H * 0.44, 1.6, 0.6);
-  if (document.fonts && document.fonts.load) {
-    Promise.race([
-      document.fonts.load('400 64px "Bagel Fat One"', 'jelly cam'),
-      new Promise((r) => setTimeout(r, 2500)),
-    ]).then(() => {
+  if (!reduceMotion) poke(W / 2, titleCy, 1.6, 0.6);
+  // the jello usually arrives while the opening wobble is still running, so it wobbles in
+  if (!(jello.complete && jello.naturalWidth)) {
+    jello.addEventListener('load', () => {
       if (source.kind !== 'title') return;
       drawTitle(); upload(); placeStart(); dirty = true; wake();
-    }).catch(() => {});
+    }, { once: true });
   }
 })();
 </script>
