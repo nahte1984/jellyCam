@@ -98,15 +98,15 @@ body { font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; -webkit-
   // How the jelly feels. Press T on a keyboard (or open the page with #tune) to adjust these live.
   const CONFIG = {
     cells: 28,        // mesh nodes across the short side of the screen
-    firmness: 600,    // pull back to rest, 1/s². Higher bounces faster
-    spread: 1500,     // coupling between neighbouring nodes, 1/s². Higher drags a wider area along
-    damping: 3,       // lower wobbles for longer. At 3 it bounces 4-5 times and rests in ~3.5 s
+    firmness: 80,     // pull back to rest, 1/s². Higher bounces faster
+    spread: 3900,     // coupling between neighbouring nodes, 1/s². Higher drags a wider area along
+    damping: 0.5,     // lower wobbles for longer. At 0.5 a big pull keeps swaying for 10-15 s
     viscosity: 4,     // smooths out fine ripples
-    grab: 0.22,       // grab radius, fraction of the short side
-    stretch: 0.3,     // how far it stretches before it resists, fraction of the short side
+    grab: 0.45,       // grab radius, fraction of the short side
+    stretch: 0.6,     // how far it stretches before it resists, fraction of the short side
     poke: 1,          // tap strength
-    shake: 8,         // how much moving the phone sloshes the image
-    gloss: 1,         // jelly highlight, refraction and colour fringing
+    shake: 2,         // how much moving the phone sloshes the image (kept low: the jelly is very soft)
+    gloss: 2.5,       // jelly highlight, refraction and colour fringing
     fpsCap: 60,       // 120 Hz screens would otherwise double the work for no visible gain
     maxDpr: 1.5,      // camera frames are ~1280 px wide; drawing at 2-3x buys nothing
     maxPixels: 2.6e6,
@@ -763,12 +763,12 @@ void main() {
 
   // ---------- tuning panel (hidden unless T is pressed or the page opens with #tune) ----------
   const TUNE = [
-    ['firmness', 'firmness', 80, 1500, 10],
+    ['firmness', 'firmness', 20, 1500, 5],
     ['spread', 'spread', 300, 8000, 50],
-    ['damping', 'damping', 0.5, 12, 0.1],
-    ['grab', 'grab size', 0.08, 0.45, 0.01],
-    ['stretch', 'stretch', 0.08, 0.6, 0.01],
-    ['gloss', 'gloss', 0, 2.5, 0.05],
+    ['damping', 'damping', 0.1, 12, 0.05],
+    ['grab', 'grab size', 0.08, 0.7, 0.01],
+    ['stretch', 'stretch', 0.08, 1, 0.01],
+    ['gloss', 'gloss', 0, 4, 0.05],
   ];
   const fmt = (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2));
   let statEl = null;
