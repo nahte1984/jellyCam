@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Jelly Cam</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: the full-bleed canvas is the whole piece. One capsule button sits under the title; everything else pins to the bottom edge and stays out of the way. */
+:root {
+  --ink: #100d12;
+  --paper: #f5eef1;
+  --dim: rgba(245, 238, 241, .66);
+  --line: rgba(245, 238, 241, .3);
+  --veil: rgba(16, 13, 18, .84);
+  --jelly: #ff5a7a;
+  --display: "Bagel Fat One", "Arial Rounded MT Bold", "Nunito", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; margin: 0; background: var(--ink); color: var(--paper); overflow: hidden; overscroll-behavior: none; }
+body { font: 14px/1.5 var(--sans); -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+#jelly { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: none; }
+#jelly.grabbing { cursor: grabbing; }
+.offscreen { position: fixed; left: 0; top: 0; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+
+.capsule {
+  font: 500 12px/1 var(--mono); letter-spacing: .26em; text-transform: lowercase;
+  color: var(--paper); background: transparent; border: 1.5px solid var(--paper); border-radius: 999px;
+  padding: 14px 28px 14px 32px; cursor: pointer;
+  transition: background-color .2s ease, color .2s ease, border-color .2s ease;
+}
+.capsule:hover:not(:disabled) { background: var(--jelly); border-color: var(--jelly); color: var(--ink); }
+.capsule:disabled { opacity: .5; cursor: default; }
+.capsule:focus-visible, .round:focus-visible, .tune input:focus-visible { outline: 2px solid var(--jelly); outline-offset: 3px; }
+#start { position: fixed; left: 50%; top: 64%; transform: translateX(-50%); }
+
+.round {
+  position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  width: 52px; height: 52px; border-radius: 50%; border: 1.5px solid var(--line);
+  background: var(--veil); color: var(--paper); display: grid; place-items: center; cursor: pointer; padding: 0;
+}
+.round svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.round:hover:not(:disabled) { border-color: var(--paper); }
+
+.notice {
+  position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  max-width: 460px; margin-inline: auto; padding: 14px 16px;
+  background: var(--veil); border: 1px solid var(--line); border-radius: 14px;
+  display: grid; gap: 12px;
+}
+.notice p { margin: 0; color: var(--dim); font-size: 13px; line-height: 1.6; }
+.notice .row { display: flex; flex-wrap: wrap; gap: 8px; }
+.notice .capsule { padding: 10px 16px 10px 19px; font-size: 11px; letter-spacing: .16em; }
+
+.tune {
+  position: fixed; left: 16px; top: calc(16px + env(safe-area-inset-top, 0px));
+  width: min(240px, calc(100% - 32px)); padding: 12px 14px;
+  background: var(--veil); border: 1px solid var(--line); border-radius: 12px;
+  font: 11px/1.4 var(--mono); color: var(--dim); display: grid; gap: 10px;
+}
+.tune .stat { color: var(--paper); font-variant-numeric: tabular-nums; }
+.tune label { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
+.tune output { color: var(--paper); font-variant-numeric: tabular-nums; }
+.tune input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: var(--jelly); }
+@media (prefers-reduced-motion: reduce) { .capsule { transition: none; } }
+</style>
+
+</head>
+<body>
+<h1 class="sr">jelly cam</h1>
+<canvas id="jelly" tabindex="0" aria-label="The camera image, set in jelly. Drag to stretch it, tap to poke it."></canvas>
+<video id="feed" class="offscreen" playsinline muted autoplay></video>
+<button id="start" class="capsule" type="button">start</button>
+<button id="flip" class="round" type="button" aria-label="Switch camera" hidden>
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 10a7.5 7.5 0 0 1 13.4-3.6"/><path d="M18.5 3v3.8h-3.8"/><path d="M19.5 14a7.5 7.5 0 0 1-13.4 3.6"/><path d="M5.5 21v-3.8h3.8"/></svg>
+</button>
+<div id="notice" class="notice" role="status" hidden>
+  <p id="noticeText"></p>
+  <div class="row">
+    <button id="retry" class="capsule" type="button">try camera again</button>
+    <button id="pick" class="capsule" type="button">use a photo or video</button>
+  </div>
+  <input id="file" class="sr" type="file" accept="image/*,video/*" tabindex="-1" aria-hidden="true">
+</div>
+<div id="tune" class="tune" hidden></div>
+
+<script>
+(() => {
+  'use strict';
+
+  // How the jelly feels. Press T on a keyboard (or open the page with #tune) to adjust these live.
+  const CONFIG = {
+    cells: 28,        // mesh nodes across the short side of the screen
+    firmness: 600,    // pull back to rest, 1/s². Higher bounces faster
+    spread: 1500,     // coupling between neighbouring nodes, 1/s². Higher drags a wider area along
+    damping: 3,       // lower wobbles for longer. At 3 it bounces 4-5 times and rests in ~3.5 s
+    viscosity: 4,     // smooths out fine ripples
+    grab: 0.22,       // grab radius, fraction of the short side
+    stretch: 0.3,     // how far it stretches before it resists, fraction of the short side
+    poke: 1,          // tap strength
+    shake: 8,         // how much moving the phone sloshes the image
+    gloss: 1,         // jelly highlight, refraction and colour fringing
+    fpsCap: 60,       // 120 Hz screens would otherwise double the work for no visible gain
+    maxDpr: 1.5,      // camera frames are ~1280 px wide; drawing at 2-3x buys nothing
+    maxPixels: 2.6e6,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('jelly'), feed = $('feed'), startBtn = $('start'), flipBtn = $('flip');
+  const notice = $('notice'), noticeText = $('noticeText'), retryBtn = $('retry'), pickBtn = $('pick');
+  const fileInput = $('file'), tunePanel = $('tune');
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const embedded = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
+
+  function showNotice(msg, opts) {
+    const o = Object.assign({ retry: true, pick: true }, opts);
+    noticeText.textContent = msg;
+    noticeText.hidden = false;
+    retryBtn.hidden = !o.retry;
+    pickBtn.hidden = !o.pick;
+    notice.hidden = false;
+  }
+
+  const gl = canvas.getContext('webgl2', {
+    antialias: false, alpha: false, depth: false, stencil: false,
+    premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: 'low-power',
+  });
+  if (!gl) {
+    startBtn.hidden = true;
+    showNotice('This browser has no WebGL 2, so the jelly cannot be drawn. Try a current Chrome, Safari or Firefox.', { retry: false, pick: false });
+    return;
+  }
+
+  // ---------- GPU side: one textured mesh, three texture reads per pixel ----------
+  const VS = `#version 300 es
+layout(location=0) in vec2 aPos;
+layout(location=1) in vec2 aN;
+layout(location=2) in vec2 aUv;
+uniform vec2 uRes;
+out vec2 vUv;
+out vec2 vN;
+void main() {
+  vUv = aUv;
+  vN = aN;
+  vec2 c = aPos / uRes * 2.0 - 1.0;
+  gl_Position = vec4(c.x, -c.y, 0.0, 1.0);
+}`;
+  const FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+in vec2 vN;
+uniform sampler2D uTex;
+uniform vec4 uCrop;
+uniform float uMirror;
+uniform float uGloss;
+out vec4 outColor;
+vec2 texUv(vec2 s) {
+  s.x = mix(s.x, 1.0 - s.x, uMirror);
+  return s * uCrop.xy + uCrop.zw;
+}
+void main() {
+  vec3 n = normalize(vec3(vN * uGloss, 1.0));
+  float tilt = length(n.xy);
+  vec2 dir = tilt > 1e-4 ? n.xy / tilt : vec2(0.0);
+  vec2 s = vUv - n.xy * 0.035;          // light bends through the jelly
+  vec2 split = dir * tilt * 0.006;      // colour fringing on steep slopes
+  vec3 col;
+  col.r = texture(uTex, texUv(s - split)).r;
+  col.g = texture(uTex, texUv(s)).g;
+  col.b = texture(uTex, texUv(s + split)).b;
+  vec3 L = normalize(vec3(-0.42, -0.62, 0.66));
+  vec3 H = normalize(L + vec3(0.0, 0.0, 1.0));
+  float spec = pow(max(dot(n, H), 0.0), 70.0) - pow(H.z, 70.0);
+  float shade = dot(n, L) - L.z;
+  col *= 1.0 + shade * 0.55;
+  col += max(spec, 0.0) * 0.85 + tilt * tilt * 0.12;
+  outColor = vec4(col, 1.0);
+}`;
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) || 'shader compile failed');
+    return s;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog) || 'link failed');
+  const U = {};
+  for (const n of ['uRes', 'uTex', 'uCrop', 'uMirror', 'uGloss']) U[n] = gl.getUniformLocation(prog, n);
+
+  const vao = gl.createVertexArray();
+  const dynBuf = gl.createBuffer(), uvBuf = gl.createBuffer(), idxBuf = gl.createBuffer();
+  gl.bindVertexArray(vao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, dynBuf);
+  gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
+  gl.enableVertexAttribArray(1); gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
+  gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf);
+  gl.enableVertexAttribArray(2); gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 8, 0);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf);
+  gl.bindVertexArray(null);
+
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([16, 13, 18, 255]));
+
+  // ---------- mesh + physics state ----------
+  let W = 0, H = 0, pxScale = 1, short = 1;
+  let cols = 0, rows = 0, N = 0, cellW = 1, cellH = 1, idxCount = 0, idxType = gl.UNSIGNED_SHORT;
+  let rx, ry, ux, uy, vx, vy, axA, ayA, hgt, dyn;
+  const grabs = new Map();
+  const inertia = { x: 0, y: 0 };
+
+  function buildGrid() {
+    short = Math.min(W, H);
+    const cell = short / (CONFIG.cells - 1);
+    cols = Math.max(4, Math.round(W / cell) + 1);
+    rows = Math.max(4, Math.round(H / cell) + 1);
+    cellW = W / (cols - 1);
+    cellH = H / (rows - 1);
+    N = cols * rows;
+    rx = new Float32Array(N); ry = new Float32Array(N);
+    ux = new Float32Array(N); uy = new Float32Array(N);
+    vx = new Float32Array(N); vy = new Float32Array(N);
+    axA = new Float32Array(N); ayA = new Float32Array(N);
+    hgt = new Float32Array(N); dyn = new Float32Array(N * 4);
+    const uv = new Float32Array(N * 2);
+    for (let j = 0, k = 0; j < rows; j++) {
+      for (let i = 0; i < cols; i++, k++) {
+        rx[k] = i * cellW; ry[k] = j * cellH;
+        uv[2 * k] = i / (cols - 1); uv[2 * k + 1] = j / (rows - 1);
+      }
+    }
+    const quads = (cols - 1) * (rows - 1);
+    const small = N < 65536;
+    const idx = small ? new Uint16Array(quads * 6) : new Uint32Array(quads * 6);
+    idxType = small ? gl.UNSIGNED_SHORT : gl.UNSIGNED_INT;
+    let p = 0;
+    for (let j = 0; j < rows - 1; j++) {
+      for (let i = 0; i < cols - 1; i++) {
+        const a = j * cols + i, b = a + 1, c = a + cols, d = c + 1;
+        if ((i + j) & 1) { idx[p++] = a; idx[p++] = b; idx[p++] = d; idx[p++] = a; idx[p++] = d; idx[p++] = c; }
+        else { idx[p++] = a; idx[p++] = b; idx[p++] = c; idx[p++] = b; idx[p++] = d; idx[p++] = c; }
+      }
+    }
+    idxCount = p;
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, uvBuf); gl.bufferData(gl.ARRAY_BUFFER, uv, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, idxBuf); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, idx, gl.STATIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, dynBuf); gl.bufferData(gl.ARRAY_BUFFER, dyn.byteLength, gl.DYNAMIC_DRAW);
+    gl.bindVertexArray(null);
+    grabs.clear();
+    canvas.classList.remove('grabbing');
+    writeMesh();
+  }
+
+  // Each node is displaced from its rest spot. It is pulled home (firmness), pulled toward its
+  // neighbours' displacement (spread), and slowed down (damping, viscosity). The border is glued
+  // to the screen edge so the picture always fills the page.
+  function step(dt) {
+    const kA = CONFIG.firmness, kL = CONFIG.spread, c = CONFIG.damping, cv = CONFIG.viscosity;
+    const gx = inertia.x, gy = inertia.y;
+    for (let j = 1; j < rows - 1; j++) {
+      let k = j * cols + 1;
+      for (let i = 1; i < cols - 1; i++, k++) {
+        const l = k - 1, r = k + 1, u = k - cols, d = k + cols;
+        axA[k] = -kA * ux[k] + kL * (ux[l] + ux[r] + ux[u] + ux[d] - 4 * ux[k])
+          - c * vx[k] + cv * (vx[l] + vx[r] + vx[u] + vx[d] - 4 * vx[k]) + gx;
+        ayA[k] = -kA * uy[k] + kL * (uy[l] + uy[r] + uy[u] + uy[d] - 4 * uy[k])
+          - c * vy[k] + cv * (vy[l] + vy[r] + vy[u] + vy[d] - 4 * vy[k]) + gy;
+      }
+    }
+    for (let j = 1; j < rows - 1; j++) {
+      let k = j * cols + 1;
+      for (let i = 1; i < cols - 1; i++, k++) {
+        vx[k] += axA[k] * dt; vy[k] += ayA[k] * dt;
+        ux[k] += vx[k] * dt; uy[k] += vy[k] * dt;
+      }
+    }
+  }
+
+  function applyGrabs() {
+    if (!grabs.size) return;
+    const L = CONFIG.stretch * short;
+    for (const g of grabs.values()) {
+      let dx = g.x - g.x0, dy = g.y - g.y0;
+      const len = Math.hypot(dx, dy);
+      let give = 1;
+      if (len > 1e-3) {
+        // rubber band: follows the finger at first, then resists harder the further you pull
+        const e = Math.exp(-len / L);
+        const reach = L * (1 - e);
+        dx *= reach / len; dy *= reach / len;
+        give = e;
+      }
+      const pvx = g.vx * give, pvy = g.vy * give;
+      for (let n = 0; n < g.count; n++) {
+        const k = g.nodes[n], w = g.w[n];
+        ux[k] += (g.bx[n] + dx * w - ux[k]) * w;
+        uy[k] += (g.by[n] + dy * w - uy[k]) * w;
+        vx[k] += (pvx * w - vx[k]) * w;
+        vy[k] += (pvy * w - vy[k]) * w;
+      }
+    }
+  }
+
+  function poke(x, y, strength, radius) {
+    if (!N) return;
+    const R = radius * short, P = strength * 2.2 * short;
+    for (let j = 1; j < rows - 1; j++) {
+      for (let i = 1; i < cols - 1; i++) {
+        const k = j * cols + i;
+        const dx = rx[k] + ux[k] - x, dy = ry[k] + uy[k] - y;
+        const d = Math.hypot(dx, dy);
+        if (d >= R || d < 1e-3) continue;
+        const t = d / R, f = 6.75 * t * (1 - t) * (1 - t);
+        vx[k] += (dx / d) * P * f;
+        vy[k] += (dy / d) * P * f;
+      }
+    }
+    wake();
+  }
+
+  // Positions plus a surface normal per node. Squeezed areas bulge up, stretched areas thin out,
+  // and the shader lights and refracts through that surface. At rest the normal is flat and the
+  // picture is untouched.
+  function writeMesh() {
+    const Hs = 3.5 * (cellW + cellH) * 0.5;
+    for (let j = 0; j < rows; j++) {
+      const ju = j > 0 ? j - 1 : j, jd = j < rows - 1 ? j + 1 : j, sy = cellH * (jd - ju);
+      for (let i = 0; i < cols; i++) {
+        const il = i > 0 ? i - 1 : i, ir = i < cols - 1 ? i + 1 : i, sx = cellW * (ir - il);
+        const row = j * cols;
+        const div = (ux[row + ir] - ux[row + il]) / sx + (uy[jd * cols + i] - uy[ju * cols + i]) / sy;
+        hgt[row + i] = -div * Hs;
+      }
+    }
+    for (let j = 0; j < rows; j++) {
+      const ju = j > 0 ? j - 1 : j, jd = j < rows - 1 ? j + 1 : j, sy = cellH * (jd - ju);
+      for (let i = 0; i < cols; i++) {
+        const il = i > 0 ? i - 1 : i, ir = i < cols - 1 ? i + 1 : i, sx = cellW * (ir - il);
+        const row = j * cols, k = row + i;
+        let gx = (hgt[row + ir] - hgt[row + il]) / sx;
+        let gy = (hgt[jd * cols + i] - hgt[ju * cols + i]) / sy;
+        gx = gx > 2.5 ? 2.5 : gx < -2.5 ? -2.5 : gx;
+        gy = gy > 2.5 ? 2.5 : gy < -2.5 ? -2.5 : gy;
+        const o = 4 * k;
+        dyn[o] = rx[k] + ux[k]; dyn[o + 1] = ry[k] + uy[k];
+        dyn[o + 2] = -gx; dyn[o + 3] = -gy;
+      }
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, dynBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, dyn);
+  }
+
+  function settled() {
+    if (grabs.size || Math.abs(inertia.x) + Math.abs(inertia.y) > 0.5) return false;
+    let mv = 0, mu = 0;
+    for (let k = 0; k < N; k++) {
+      const v = vx[k] * vx[k] + vy[k] * vy[k], u = ux[k] * ux[k] + uy[k] * uy[k];
+      if (v > mv) mv = v;
+      if (u > mu) mu = u;
+    }
+    if (mv < 1 && mu < 0.04) {
+      ux.fill(0); uy.fill(0); vx.fill(0); vy.fill(0);
+      return true;
+    }
+    return false;
+  }
+
+  // ---------- picture source: title card, camera, or a dropped file ----------
+  const titleCv = document.createElement('canvas');
+  const titleCtx = titleCv.getContext('2d');
+  let titlePx = 64;
+  let source = { el: titleCv, video: false, mirror: false, kind: 'title', w: 0, h: 0, rvfc: false };
+  let newFrame = false;
+
+  function token(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return v || fallback;
+  }
+
+  function drawTitle() {
+    const s = Math.min(pxScale, 2048 / Math.max(W, H));
+    titleCv.width = Math.max(2, Math.round(W * s));
+    titleCv.height = Math.max(2, Math.round(H * s));
+    const c = titleCtx;
+    c.setTransform(s, 0, 0, s, 0, 0);
+    c.globalAlpha = 1;
+    c.fillStyle = token('--ink', '#100d12');
+    c.fillRect(0, 0, W, H);
+    // a field of seeds, so every wobble is visible
+    const gap = short / 11, r = Math.max(1.2, short / 250);
+    const ox = (W % gap) / 2 + gap / 2, oy = (H % gap) / 2 + gap / 2;
+    c.fillStyle = token('--paper', '#f5eef1');
+    c.globalAlpha = 0.13;
+    c.beginPath();
+    for (let y = oy; y < H; y += gap) for (let x = ox; x < W; x += gap) { c.moveTo(x + r, y); c.arc(x, y, r, 0, Math.PI * 2); }
+    c.fill();
+    c.globalAlpha = 1;
+    let f = Math.min(W * 0.17, H * 0.2);
+    const face = '"Bagel Fat One", "Arial Rounded MT Bold", Nunito, system-ui, sans-serif';
+    c.font = `400 ${f}px ${face}`;
+    const tw = c.measureText('jelly cam').width;
+    if (tw > W * 0.86) { f *= (W * 0.86) / tw; c.font = `400 ${f}px ${face}`; }
+    titlePx = f;
+    c.textAlign = 'center';
+    c.textBaseline = 'middle';
+    c.fillStyle = token('--jelly', '#ff5a7a');
+    c.fillText('jelly cam', W / 2, H * 0.44);
+  }
+
+  function placeStart() {
+    const top = Math.min(H - 84, H * 0.44 + titlePx * 0.62 + 22);
+    startBtn.style.top = Math.round(top) + 'px';
+  }
+
+  function srcSize(s) {
+    if (s.video) return [s.el.videoWidth, s.el.videoHeight];
+    return [s.el.naturalWidth || s.el.width, s.el.naturalHeight || s.el.height];
+  }
+
+  function upload() {
+    const [w, h] = srcSize(source);
+    if (!w || !h) return;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source.el);
+    source.w = w; source.h = h;
+  }
+
+  function setSource(s) {
+    s.w = 0; s.h = 0; s.rvfc = false;
+    source = s;
+    if (s.video && 'requestVideoFrameCallback' in s.el) {
+      s.rvfc = true;
+      const v = s.el;
+      const onFrame = () => { if (source !== s) return; newFrame = true; v.requestVideoFrameCallback(onFrame); };
+      v.requestVideoFrameCallback(onFrame);
+    }
+    upload();
+    dirty = true;
+    if (!reduceMotion) poke(W / 2, H / 2, 1.5, 0.6);
+    wake();
+  }
+
+  // cover-fit the picture to the screen without stretching it
+  function crop() {
+    const tw = source.w || 1, th = source.h || 1;
+    const A = W / H, T = tw / th;
+    if (T > A) { const s = A / T; return [s, 1, (1 - s) / 2, 0]; }
+    const s = T / A;
+    return [1, s, 0, (1 - s) / 2];
+  }
+
+  function draw() {
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    gl.useProgram(prog);
+    gl.bindVertexArray(vao);
+    gl.uniform2f(U.uRes, W, H);
+    const c = crop();
+    gl.uniform4f(U.uCrop, c[0], c[1], c[2], c[3]);
+    gl.uniform1f(U.uMirror, source.mirror ? 1 : 0);
+    gl.uniform1f(U.uGloss, CONFIG.gloss);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.uniform1i(U.uTex, 0);
+    gl.drawElements(gl.TRIANGLES, idxCount, idxType, 0);
+    gl.bindVertexArray(null);
+  }
+
+  // ---------- frame loop: sleeps when the jelly is still ----------
+  let rafId = 0, lastT = 0, acc = 0, awake = true, dirty = true;
+  let frames = 0, fpsT = 0, fps = 0;
+
+  function wake() {
+    awake = true;
+    if (!rafId && !document.hidden) { lastT = 0; rafId = requestAnimationFrame(tick); }
+  }
+
+  function tick(now) {
+    rafId = 0;
+    if (lastT && now - lastT < 1000 / CONFIG.fpsCap - 1.5) { rafId = requestAnimationFrame(tick); return; }
+    const dt = lastT ? Math.min(0.05, (now - lastT) / 1000) : 1 / 60;
+    lastT = now;
+    let changed = false;
+    if (awake) {
+      const h = 1 / 240;
+      acc += dt;
+      let n = 0;
+      while (acc >= h && n < 14) { step(h); applyGrabs(); acc -= h; n++; }
+      if (n >= 14) acc = 0;
+      for (const g of grabs.values()) if (now - g.t > 40) { g.vx *= 0.7; g.vy *= 0.7; }
+      if (settled()) awake = false;
+      writeMesh();
+      changed = true;
+    }
+    if (source.video) {
+      if ((newFrame || !source.rvfc) && source.el.readyState >= 2) { upload(); dirty = true; }
+      newFrame = false;
+    }
+    if (changed || dirty) { draw(); dirty = false; frames++; }
+    if (now - fpsT > 500) { fps = (frames * 1000) / (now - fpsT); frames = 0; fpsT = now; updateStats(); }
+    if (awake || source.video) rafId = requestAnimationFrame(tick);
+    else updateStats();
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { if (rafId) cancelAnimationFrame(rafId); rafId = 0; }
+    else { dirty = true; wake(); if (stream) requestWakeLock(); }
+  });
+
+  // ---------- size ----------
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
+    if (w === W && h === H) return;
+    W = w; H = h;
+    pxScale = Math.min(window.devicePixelRatio || 1, CONFIG.maxDpr, Math.sqrt(CONFIG.maxPixels / (W * H)));
+    canvas.width = Math.max(1, Math.round(W * pxScale));
+    canvas.height = Math.max(1, Math.round(H * pxScale));
+    buildGrid();
+    if (source.kind === 'title') { drawTitle(); upload(); }
+    placeStart();
+    dirty = true;
+    wake();
+  }
+  window.addEventListener('resize', resize);
+
+  // ---------- touch and mouse ----------
+  function toLocal(e) {
+    const r = canvas.getBoundingClientRect();
+    return [(e.clientX - r.left) * (W / r.width), (e.clientY - r.top) * (H / r.height)];
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button > 0) return;
+    const [x, y] = toLocal(e);
+    const R = CONFIG.grab * short, R2 = R * R;
+    const nodes = [], ws = [], bx = [], by = [];
+    for (let j = 1; j < rows - 1; j++) {
+      for (let i = 1; i < cols - 1; i++) {
+        const k = j * cols + i;
+        const dx = rx[k] + ux[k] - x, dy = ry[k] + uy[k] - y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < R2) { const q = 1 - d2 / R2; nodes.push(k); ws.push(q * q); bx.push(ux[k]); by.push(uy[k]); }
+      }
+    }
+    grabs.set(e.pointerId, {
+      x0: x, y0: y, x, y, lx: x, ly: y, vx: 0, vy: 0, t: e.timeStamp, t0: e.timeStamp, travel: 0,
+      count: nodes.length, nodes: Int32Array.from(nodes), w: Float32Array.from(ws),
+      bx: Float32Array.from(bx), by: Float32Array.from(by),
+    });
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+    canvas.classList.add('grabbing');
+    wake();
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    const g = grabs.get(e.pointerId);
+    if (!g) return;
+    const [x, y] = toLocal(e);
+    const dt = (e.timeStamp - g.t) / 1000;
+    if (dt > 0.001) {
+      g.vx = g.vx * 0.55 + ((x - g.lx) / dt) * 0.45;
+      g.vy = g.vy * 0.55 + ((y - g.ly) / dt) * 0.45;
+      const lim = 5 * short, m = Math.hypot(g.vx, g.vy);
+      if (m > lim) { g.vx *= lim / m; g.vy *= lim / m; }
+    }
+    g.travel += Math.hypot(x - g.lx, y - g.ly);
+    g.x = x; g.y = y; g.lx = x; g.ly = y; g.t = e.timeStamp;
+    wake();
+  });
+
+  function release(e) {
+    const g = grabs.get(e.pointerId);
+    if (!g) return;
+    grabs.delete(e.pointerId);
+    if (e.type === 'pointerup' && g.travel < 8 && e.timeStamp - g.t0 < 320) poke(g.x, g.y, CONFIG.poke, 0.2);
+    if (!grabs.size) canvas.classList.remove('grabbing');
+    wake();
+  }
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('lostpointercapture', release);
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('keydown', (e) => {
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); poke(W / 2, H / 2, 1.3, 0.5); }
+  });
+
+  // ---------- phone motion: the jelly lags behind the phone and sloshes ----------
+  let motionOn = false;
+  const hp = { x: 0, y: 0, ready: false };
+  function requestMotion() {
+    const DME = window.DeviceMotionEvent;
+    if (!DME || motionOn) return;
+    const enable = () => { if (!motionOn) { motionOn = true; window.addEventListener('devicemotion', onMotion); } };
+    if (typeof DME.requestPermission === 'function') {
+      DME.requestPermission().then((s) => { if (s === 'granted') enable(); }).catch(() => {});
+    } else enable();
+  }
+  function onMotion(e) {
+    let ax, ay;
+    const a = e.acceleration;
+    if (a && a.x != null && a.y != null) { ax = a.x; ay = a.y; }
+    else {
+      const g = e.accelerationIncludingGravity;
+      if (!g || g.x == null) return;
+      if (!hp.ready) { hp.x = g.x; hp.y = g.y; hp.ready = true; }
+      hp.x += (g.x - hp.x) * 0.08; hp.y += (g.y - hp.y) * 0.08;
+      ax = g.x - hp.x; ay = g.y - hp.y;
+    }
+    if (Math.abs(ax) < 0.2) ax = 0;
+    if (Math.abs(ay) < 0.2) ay = 0;
+    const deg = (screen.orientation && typeof screen.orientation.angle === 'number') ? screen.orientation.angle : (window.orientation || 0);
+    const t = (deg * Math.PI) / 180;
+    const sx = ax * Math.cos(t) - ay * Math.sin(t);
+    const syUp = ax * Math.sin(t) + ay * Math.cos(t);
+    const S = CONFIG.shake * short;
+    const lim = 20 * S;
+    const fx = Math.max(-lim, Math.min(lim, -sx * S));
+    const fy = Math.max(-lim, Math.min(lim, syUp * S));
+    inertia.x += (fx - inertia.x) * 0.5;
+    inertia.y += (fy - inertia.y) * 0.5;
+    if (Math.abs(inertia.x) + Math.abs(inertia.y) > 0.5) wake();
+  }
+
+  // ---------- camera ----------
+  let stream = null, facing = 'user', wakeLock = null;
+
+  function requestWakeLock() {
+    try {
+      if (navigator.wakeLock) navigator.wakeLock.request('screen').then((l) => { wakeLock = l; }).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }
+
+  function stopStream() {
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null;
+  }
+
+  function whenSized(v) {
+    return new Promise((res) => {
+      if (v.videoWidth) return res();
+      v.addEventListener('loadedmetadata', () => res(), { once: true });
+      setTimeout(res, 3000);
+    });
+  }
+
+  async function openCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      const err = new Error('no getUserMedia'); err.name = 'NotSupportedError'; throw err;
+    }
+    stopStream();
+    const s = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
+    stream = s;
+    feed.srcObject = s;
+    await feed.play().catch(() => {});
+    await whenSized(feed);
+    const track = s.getVideoTracks()[0];
+    const fm = track && track.getSettings ? track.getSettings().facingMode : undefined;
+    setSource({ el: feed, video: true, mirror: fm ? fm !== 'environment' : facing === 'user', kind: 'camera' });
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      flipBtn.hidden = devices.filter((d) => d.kind === 'videoinput').length < 2;
+    } catch (e) { flipBtn.hidden = true; }
+  }
+
+  async function startCamera() {
+    startBtn.disabled = true; retryBtn.disabled = true;
+    try {
+      await openCamera();
+      startBtn.hidden = true;
+      notice.hidden = true;
+      requestWakeLock();
+    } catch (err) {
+      startBtn.hidden = true;
+      const name = err && err.name;
+      if (embedded) {
+        showNotice('This preview is not allowed to use the camera. Put the page on its own https address, such as GitHub Pages, and the camera will open. Until then, try it with a photo or video.', { retry: false });
+      } else if (name === 'NotAllowedError' || name === 'SecurityError') {
+        showNotice('Camera access is blocked. Allow the camera for this site in the browser, then try again, or use a photo or video instead.');
+      } else {
+        showNotice('No camera answered. Check that one is connected and not in use by another app, then try again, or use a photo or video instead.');
+      }
+    } finally {
+      startBtn.disabled = false; retryBtn.disabled = false;
+    }
+  }
+
+  startBtn.addEventListener('click', () => { requestMotion(); startCamera(); });
+  retryBtn.addEventListener('click', () => { requestMotion(); startCamera(); });
+
+  flipBtn.addEventListener('click', async () => {
+    const prev = facing;
+    facing = facing === 'user' ? 'environment' : 'user';
+    flipBtn.disabled = true;
+    try { await openCamera(); }
+    catch (e) { facing = prev; try { await openCamera(); } catch (e2) { /* stays on title */ } }
+    finally { flipBtn.disabled = false; }
+  });
+
+  // ---------- photo or video instead of the camera ----------
+  let fileUrl = null, fileVideo = null;
+  async function useFile(f) {
+    if (!f) return;
+    const isVideo = f.type.startsWith('video/'), isImage = f.type.startsWith('image/');
+    if (!isVideo && !isImage) { showNotice('That file is not a photo or a video. Try a JPG, PNG or MP4.', { retry: !embedded }); return; }
+    if (fileUrl) URL.revokeObjectURL(fileUrl);
+    fileUrl = URL.createObjectURL(f);
+    stopStream();
+    flipBtn.hidden = true;
+    startBtn.hidden = true;
+    if (isVideo) {
+      if (!fileVideo) {
+        fileVideo = document.createElement('video');
+        fileVideo.className = 'offscreen';
+        fileVideo.muted = true; fileVideo.loop = true; fileVideo.playsInline = true;
+        fileVideo.setAttribute('playsinline', '');
+        document.body.appendChild(fileVideo);
+      }
+      fileVideo.src = fileUrl;
+      await fileVideo.play().catch(() => {});
+      await whenSized(fileVideo);
+      if (!fileVideo.videoWidth) { showNotice('That video could not be played here. Try an MP4.', { retry: !embedded }); return; }
+      setSource({ el: fileVideo, video: true, mirror: false, kind: 'file' });
+    } else {
+      const img = new Image();
+      img.src = fileUrl;
+      try { await img.decode(); } catch (e) { showNotice('That photo could not be opened. Try a JPG or PNG.', { retry: !embedded }); return; }
+      const max = Math.min(2048, gl.getParameter(gl.MAX_TEXTURE_SIZE));
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.naturalWidth * k));
+      cv.height = Math.max(1, Math.round(img.naturalHeight * k));
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      setSource({ el: cv, video: false, mirror: false, kind: 'file' });
+    }
+    noticeText.hidden = true;
+  }
+  pickBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => { const f = fileInput.files && fileInput.files[0]; fileInput.value = ''; useFile(f); });
+  window.addEventListener('dragover', (e) => e.preventDefault());
+  window.addEventListener('drop', (e) => { e.preventDefault(); useFile(e.dataTransfer && e.dataTransfer.files[0]); });
+
+  // ---------- tuning panel (hidden unless T is pressed or the page opens with #tune) ----------
+  const TUNE = [
+    ['firmness', 'firmness', 80, 1500, 10],
+    ['spread', 'spread', 300, 8000, 50],
+    ['damping', 'damping', 0.5, 12, 0.1],
+    ['grab', 'grab size', 0.08, 0.45, 0.01],
+    ['stretch', 'stretch', 0.08, 0.6, 0.01],
+    ['gloss', 'gloss', 0, 2.5, 0.05],
+  ];
+  const fmt = (v) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2));
+  let statEl = null;
+  function buildTune() {
+    statEl = document.createElement('div');
+    statEl.className = 'stat';
+    tunePanel.appendChild(statEl);
+    for (const [key, label, min, max, st] of TUNE) {
+      const id = 'tune-' + key;
+      const row = document.createElement('label');
+      row.htmlFor = id;
+      const name = document.createElement('span');
+      name.textContent = label;
+      const out = document.createElement('output');
+      out.setAttribute('for', id);
+      out.textContent = fmt(CONFIG[key]);
+      const input = document.createElement('input');
+      input.type = 'range'; input.id = id; input.min = min; input.max = max; input.step = st; input.value = CONFIG[key];
+      input.addEventListener('input', () => { CONFIG[key] = parseFloat(input.value); out.textContent = fmt(CONFIG[key]); dirty = true; wake(); });
+      row.append(name, out, input);
+      tunePanel.appendChild(row);
+    }
+    const hint = document.createElement('div');
+    hint.textContent = 'T hides this panel';
+    tunePanel.appendChild(hint);
+  }
+  function updateStats() {
+    if (tunePanel.hidden || !statEl) return;
+    const state = awake ? `${Math.round(fps)} fps · wobbling`
+      : source.video ? `${Math.round(fps)} fps · video frames only`
+      : 'resting · 0 fps';
+    statEl.textContent = `${state} · mesh ${cols}×${rows} · ${canvas.width}×${canvas.height}px`;
+  }
+  window.addEventListener('keydown', (e) => {
+    if ((e.key === 't' || e.key === 'T') && !e.metaKey && !e.ctrlKey && !e.altKey && !(e.target instanceof HTMLInputElement)) {
+      tunePanel.hidden = !tunePanel.hidden;
+      updateStats();
+    }
+  });
+
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = 0;
+    showNotice('The graphics card reset the drawing surface. Reload the page to continue.', { retry: false, pick: false });
+  });
+
+  // ---------- go ----------
+  buildTune();
+  if (location.hash === '#tune') tunePanel.hidden = false;
+  resize();
+  if (!reduceMotion) poke(W / 2, H * 0.44, 1.6, 0.6);
+  if (document.fonts && document.fonts.load) {
+    Promise.race([
+      document.fonts.load('400 64px "Bagel Fat One"', 'jelly cam'),
+      new Promise((r) => setTimeout(r, 2500)),
+    ]).then(() => {
+      if (source.kind !== 'title') return;
+      drawTitle(); upload(); placeStart(); dirty = true; wake();
+    }).catch(() => {});
+  }
+})();
+</script>
+
+</body>
+</html>
